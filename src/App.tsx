@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { database } from './firebase'
-import { ref, push, onValue, remove, set } from 'firebase/database'
+import { ref, push, onValue, remove, set, get } from 'firebase/database'
 import './App.css'
 
 interface Bubble {
@@ -32,9 +32,10 @@ function App() {
   const [authError, setAuthError] = useState('')
   const [activeUsers, setActiveUsers] = useState<Record<string, ActiveUser>>({})
   const [sessionId] = useState(() => 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9))
-
-  // 허용된 코드들
-  const VALID_CODES = ['HAICCHAT', 'SUMINBUTT', 'BUBBLETIME', 'LOVETEXT', '천문학적으로 사랑해']
+  
+  // 새로 추가된 방 시스템 상태들
+  const [roomId, setRoomId] = useState<string>('')
+  const [mode, setMode] = useState<'' | 'create' | 'join'>('')
 
   const userColors: Record<UserKey, string> = {
     user1: 'pink',
@@ -44,11 +45,11 @@ function App() {
     user5: 'yellow'
   }
 
-  // Firebase에서 실시간 데이터 감지
+  // Firebase에서 실시간 데이터 감지 (방별로 분리)
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !roomId) return;
 
-    const bubblesRef = ref(database, 'bubbles');
+    const bubblesRef = ref(database, `rooms/${roomId}/bubbles`);
 
     const unsubscribe = onValue(bubblesRef, (snapshot) => {
       console.log('Firebase 데이터 수신:', snapshot.val());
@@ -75,13 +76,13 @@ function App() {
     console.log('현재 bubbles state:', bubbles);
 
     return () => unsubscribe();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, roomId]);
 
-  // 활성 사용자들 실시간 감지
+  // 활성 사용자들 실시간 감지 (방별로 분리)
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !roomId) return;
 
-    const activeUsersRef = ref(database, 'activeUsers');
+    const activeUsersRef = ref(database, `rooms/${roomId}/activeUsers`);
     
     const unsubscribe = onValue(activeUsersRef, (snapshot) => {
       const data = snapshot.val() || {};
@@ -90,43 +91,108 @@ function App() {
     });
 
     return () => unsubscribe();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, roomId]);
 
   // 페이지 떠날 때만 사용자 정보 제거 (색상 변경과 분리)
   useEffect(() => {
-    if (!isAuthenticated || !currentUser) return;
+    if (!isAuthenticated || !currentUser || !roomId) return;
 
     const handleBeforeUnload = () => {
       // 실제 페이지를 떠날 때만 제거
-      navigator.sendBeacon(`https://haicchat-default-rtdb.asia-southeast1.firebasedatabase.app/activeUsers/${sessionId}.json`, 
-        JSON.stringify(null));
+      navigator.sendBeacon(
+        `https://haicchat-default-rtdb.asia-southeast1.firebasedatabase.app/rooms/${roomId}/activeUsers/${sessionId}.json`, 
+        JSON.stringify(null)
+      );
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      // 컴포넌트 언마운트 시에만 사용자 제거 (색상 변경과 구분)
     };
-  }, [sessionId]); // currentUser 의존성 제거
+  }, [sessionId, roomId]);
 
-  // 인증 시도
-  const handleAuth = () => {
-    if (VALID_CODES.includes(authCode.toUpperCase())) {
-      setIsAuthenticated(true)
-      setAuthError('')
-    } else {
-      setAuthError('잘못된 인증 코드입니다')
-      setAuthCode('')
+  // 방 생성
+  const handleCreateRoom = async () => {
+    if (authCode.trim().length < 3) {
+      setAuthError('방 이름은 3글자 이상이어야 합니다')
+      return
+    }
+
+    const roomCodeUpper = authCode.toUpperCase();
+    
+    try {
+      // 방이 이미 존재하는지 확인
+      const roomRef = ref(database, `rooms/${roomCodeUpper}`);
+      const snapshot = await get(roomRef);
+      
+      if (snapshot.exists()) {
+        setAuthError('이미 존재하는 방 이름입니다. 다른 이름을 선택해주세요.')
+        return;
+      }
+
+      // 새 방 생성 (초기 방 정보 설정)
+      await set(ref(database, `rooms/${roomCodeUpper}/roomInfo`), {
+        name: roomCodeUpper,
+        createdAt: Date.now(),
+        createdBy: sessionId
+      });
+
+      setRoomId(roomCodeUpper);
+      setIsAuthenticated(true);
+      setAuthError('');
+      console.log('새 방 생성됨:', roomCodeUpper);
+    } catch (error) {
+      console.error('방 생성 실패:', error);
+      setAuthError('방 생성에 실패했습니다. 다시 시도해주세요.');
     }
   }
 
-  // 활성 사용자 등록
+  // 기존 방 입장
+  const handleJoinRoom = async () => {
+    if (!authCode.trim()) {
+      setAuthError('방 이름을 입력해주세요')
+      return
+    }
+
+    const roomCodeUpper = authCode.toUpperCase();
+    
+    try {
+      // 방이 존재하는지 확인
+      const roomRef = ref(database, `rooms/${roomCodeUpper}`);
+      const snapshot = await get(roomRef);
+      
+      if (!snapshot.exists()) {
+        setAuthError('존재하지 않는 방입니다. 방 이름을 확인해주세요.');
+        return;
+      }
+
+      setRoomId(roomCodeUpper);
+      setIsAuthenticated(true);
+      setAuthError('');
+      console.log('방 입장:', roomCodeUpper);
+    } catch (error) {
+      console.error('방 입장 실패:', error);
+      setAuthError('방 입장에 실패했습니다. 다시 시도해주세요.');
+    }
+  }
+
+  // 통합된 인증 처리
+  const handleAuth = () => {
+    setAuthError('');
+    if (mode === 'create') {
+      handleCreateRoom();
+    } else if (mode === 'join') {
+      handleJoinRoom();
+    }
+  }
+
+  // 활성 사용자 등록 (방별로 분리)
   const setActiveUser = async (userId: string) => {
     try {
       setCurrentUser(userId);
       
-      const userRef = ref(database, `activeUsers/${sessionId}`);
+      const userRef = ref(database, `rooms/${roomId}/activeUsers/${sessionId}`);
       const userData = {
         user: userId,
         color: userColors[userId as UserKey],
@@ -145,19 +211,23 @@ function App() {
   const handleLogout = async () => {
     // 로그아웃 시에만 명시적으로 제거
     try {
-      await remove(ref(database, `activeUsers/${sessionId}`));
+      if (roomId) {
+        await remove(ref(database, `rooms/${roomId}/activeUsers/${sessionId}`));
+      }
     } catch (error) {
       console.error('로그아웃 시 사용자 제거 실패:', error);
     }
     
-    setIsAuthenticated(false)
-    setAuthCode('')
-    setBubbles([])
-    setCurrentUser('')
-    setActiveUsers({})
+    setIsAuthenticated(false);
+    setAuthCode('');
+    setBubbles([]);
+    setCurrentUser('');
+    setActiveUsers({});
+    setRoomId('');
+    setMode('');
   }
 
-  // 사용자 변경
+  // 사용자 변경 (방별로 분리)
   const handleUserChange = async (userId: string) => {
     const targetColor = userColors[userId as UserKey];
     
@@ -182,8 +252,8 @@ function App() {
       // 로컬 상태 먼저 업데이트
       setCurrentUser(userId);
       
-      // Firebase 업데이트
-      const userRef = ref(database, `activeUsers/${sessionId}`);
+      // Firebase 업데이트 (방별로)
+      const userRef = ref(database, `rooms/${roomId}/activeUsers/${sessionId}`);
       const userData = {
         user: userId,
         color: targetColor,
@@ -204,9 +274,9 @@ function App() {
     return Object.values(activeUsers).some((user: ActiveUser) => user.color === color);
   };
 
-  // Firebase에 메시지 보내기
+  // Firebase에 메시지 보내기 (방별로 분리)
   const sendMessage = async () => {
-    if (message.trim() && currentUser) {
+    if (message.trim() && currentUser && roomId) {
       const newBubble: Omit<Bubble, 'firebaseId'> = {
         id: Date.now(),
         text: message,
@@ -218,7 +288,7 @@ function App() {
       }
 
       try {
-        await push(ref(database, 'bubbles'), newBubble);
+        await push(ref(database, `rooms/${roomId}/bubbles`), newBubble);
         setMessage('');
       } catch (error) {
         console.error('메시지 전송 실패:', error);
@@ -247,7 +317,7 @@ function App() {
     });
   }
 
-  // Firebase에서 비눗방울 삭제
+  // Firebase에서 비눗방울 삭제 (방별로 분리)
   const popBubble = async (bubble: Bubble) => {
     playPopSound();
 
@@ -270,14 +340,14 @@ function App() {
     // 300ms 후 Firebase에서 삭제
     setTimeout(async () => {
       try {
-        await remove(ref(database, `bubbles/${bubble.firebaseId}`));
+        await remove(ref(database, `rooms/${roomId}/bubbles/${bubble.firebaseId}`));
       } catch (error) {
         console.error('비눗방울 삭제 실패:', error);
       }
     }, 300);
   }
 
-  // 인증되지 않은 경우 로그인 화면 표시
+  // 인증되지 않은 경우 방 생성/입장 화면 표시
   if (!isAuthenticated) {
     return (
       <div className="App auth-screen">
@@ -285,27 +355,71 @@ function App() {
           <h1>🫧 HaiCChat 🫧</h1>
           <p>비눗방울 채팅에 오신 것을 환영합니다!</p>
 
-          <div className="auth-form">
-            <input
-              type="text"
-              value={authCode}
-              onChange={(e) => setAuthCode(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleAuth()}
-              placeholder="인증 코드를 입력하세요"
-              className="auth-input"
-            />
-            <button onClick={handleAuth} className="auth-button">
-              입장하기
-            </button>
-          </div>
+          {/* 모드 선택 */}
+          {!mode && (
+            <div className="mode-selection">
+              <button 
+                onClick={() => setMode('create')} 
+                className="mode-button create"
+              >
+                🏠 새로운 방 만들기
+              </button>
+              <button 
+                onClick={() => setMode('join')} 
+                className="mode-button join"
+              >
+                🚪 기존 방에 들어가기
+              </button>
+            </div>
+          )}
+
+          {/* 방 코드 입력 */}
+          {mode && (
+            <div className="room-form">
+              <h3>
+                {mode === 'create' ? '🏠 새 방 만들기' : '🚪 방 입장하기'}
+              </h3>
+              <p>
+                {mode === 'create' 
+                  ? '원하는 방 이름을 입력해주세요' 
+                  : '입장할 방 이름을 입력해주세요'
+                }
+              </p>
+
+              <div className="auth-form">
+                <input
+                  type="text"
+                  value={authCode}
+                  onChange={(e) => setAuthCode(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleAuth()}
+                  placeholder={mode === 'create' ? '방 이름 (예: HAICCHAT)' : '방 이름을 입력하세요'}
+                  className="auth-input"
+                />
+                <button onClick={handleAuth} className="auth-button">
+                  {mode === 'create' ? '방 만들기' : '입장하기'}
+                </button>
+              </div>
+
+              <button 
+                onClick={() => {
+                  setMode('')
+                  setAuthCode('')
+                  setAuthError('')
+                }} 
+                className="back-button"
+              >
+                뒤로 가기
+              </button>
+            </div>
+          )}
 
           {authError && (
             <div className="auth-error">{authError}</div>
           )}
 
           <div className="auth-hint">
-            <p>코드는 대소문자를 구분하지 않습니다</p>
-            <p>테스트 코드: HAICCHAT, BUBBLETIME, LOVETEXT, SUMINBUTT</p>
+            <p>방 이름은 영어, 한글, 숫자 모두 가능합니다</p>
+            <p>같은 방 이름으로 친구들과 함께 채팅하세요!</p>
           </div>
         </div>
       </div>
@@ -318,7 +432,7 @@ function App() {
       <div className="App auth-screen">
         <div className="auth-container">
           <h1>🫧 사용자 선택 🫧</h1>
-          <p>사용할 색상을 선택해주세요!</p>
+          <p>방 "{roomId}"에서 사용할 색상을 선택해주세요!</p>
           
           <div className="user-selection-grid">
             {Object.entries(userColors).map(([userId, color]) => {
@@ -360,9 +474,42 @@ function App() {
   console.log('render 시점 bubbles 길이:', bubbles.length);
   console.log('render 시점 bubbles 내용:', bubbles);
 
+  // 방 삭제 함수
+  const handleDeleteRoom = async () => {
+    if (!roomId) return;
+    
+    const confirmDelete = window.confirm(`방 "${roomId}"을(를) 정말로 삭제하시겠습니까?\n\n⚠️ 이 방의 모든 메시지와 데이터가 영구적으로 삭제됩니다.`);
+    
+    if (confirmDelete) {
+      try {
+        // Firebase에서 방 전체 삭제
+        await remove(ref(database, `rooms/${roomId}`));
+        console.log('방 삭제됨:', roomId);
+        
+        // 로그아웃 처리 (모든 상태 초기화)
+        setIsAuthenticated(false);
+        setAuthCode('');
+        setBubbles([]);
+        setCurrentUser('');
+        setActiveUsers({});
+        setRoomId('');
+        setMode('');
+      } catch (error) {
+        console.error('방 삭제 실패:', error);
+        alert('방 삭제에 실패했습니다. 다시 시도해주세요.');
+      }
+    }
+  };
+
   return (
     <div className="App">
       <h1>🫧 HaiCChat 🫧</h1>
+      <div className="room-info">
+        방: <strong>{roomId}</strong>
+        <button onClick={handleDeleteRoom} className="delete-room-button" title="방 삭제">
+          🗑️
+        </button>
+      </div>
       <button onClick={handleLogout} className="logout-button">
         로그아웃
       </button>

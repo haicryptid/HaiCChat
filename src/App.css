@@ -500,7 +500,7 @@
 
 .auth-button {
   padding: 15px 30px;
-  background: linear-gradient(45deg, #ff69b4, #87ceeb);
+  background: linear-gradient(45deg, #ffb1d8, #79beff);
   color: white;
   border: none;
   border-radius: 25px;
@@ -512,6 +512,7 @@
 
 .auth-button:hover {
   transform: scale(1.05);
+  background: linear-gradient(45deg, #ff65b7, #51abff);
 }
 
 .auth-error {
@@ -547,4 +548,93 @@
 .logout-button:hover {
   background: rgb(255, 255, 255);
   transform: scale(1.05);
+}
+
+/* 🔥 새로 추가: 방 생성/입장 선택 버튼 스타일 */
+.mode-selection {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin: 20px 0;
+}
+
+.mode-button {
+  padding: 20px 30px;
+  border: none;
+  border-radius: 25px;
+  background: linear-gradient(45deg, #ff69b4, #87ceeb);
+  font-family: 'BabySharkFont', monospace;
+  font-size: 16px;
+  font-weight: bold;
+  color: white; /* 그라데이션 배경에 흰색 텍스트 */
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+}
+
+.mode-button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 12px 35px rgba(0,0,0,0.25);
+}
+
+.mode-button.create {
+  background: linear-gradient(45deg, #ffb1d8, #79beff);
+}
+
+.mode-button.create:hover {
+  background: linear-gradient(45deg, #ff65b7, #51abff);
+}
+
+.mode-button.join {
+  background: linear-gradient(45deg, #79beff, #ffb1d8);
+}
+
+.mode-button.join:hover {
+  background: linear-gradient(45deg, #51abff, #ff65b7);
+}
+
+/* 방 입력 폼 스타일 */
+.room-form h3 {
+  color: #333;
+  margin-bottom: 10px;
+  font-size: 18px;
+}
+
+/* 방 정보 표시 - 원래대로 왼쪽 상단 */
+.room-info {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 8px 15px;
+  border-radius: 15px;
+  font-size: 12px;
+  color: #333;
+  border: 2px solid rgba(255, 105, 180, 0.3);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 방 삭제 버튼 */
+.delete-room-button {
+  background: rgba(255, 99, 99, 0.8);
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  margin-left: 5px;
+}
+
+.delete-room-button:hover {
+  background: rgba(255, 69, 69, 1);
+  transform: scale(1.1);
 }
