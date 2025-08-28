@@ -37,6 +37,11 @@ function App() {
   const [roomId, setRoomId] = useState<string>('')
   const [mode, setMode] = useState<'' | 'create' | 'join'>('')
 
+  // 페이지 타이틀 변경
+  useEffect(() => {
+    document.title = 'HaiCChat';
+  }, []);
+
   const userColors: Record<UserKey, string> = {
     user1: 'pink',
     user2: 'blue',
@@ -377,14 +382,8 @@ function App() {
           {mode && (
             <div className="room-form">
               <h3>
-                {mode === 'create' ? '🏠 새 방 만들기' : '🚪 방 입장하기'}
+                {mode === 'create' ? '🏠 만들고자 하는 방의 이름을 입력해주세요' : '🚪 입장하고자 하는 방의 이름을 입력해주세요'}
               </h3>
-              <p>
-                {mode === 'create' 
-                  ? '원하는 방 이름을 입력해주세요' 
-                  : '입장할 방 이름을 입력해주세요'
-                }
-              </p>
 
               <div className="auth-form">
                 <input
@@ -392,7 +391,7 @@ function App() {
                   value={authCode}
                   onChange={(e) => setAuthCode(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleAuth()}
-                  placeholder={mode === 'create' ? '방 이름 (예: HAICCHAT)' : '방 이름을 입력하세요'}
+                  placeholder={mode === 'create' ? '예: HAICCHAT' : '예: HAICCHAT'}
                   className="auth-input"
                 />
                 <button onClick={handleAuth} className="auth-button">
@@ -419,7 +418,7 @@ function App() {
 
           <div className="auth-hint">
             <p>방 이름은 영어, 한글, 숫자 모두 가능합니다</p>
-            <p>같은 방 이름으로 친구들과 함께 채팅하세요!</p>
+            <p>최대 5명까지 친구들을 초대해보세요!</p>
           </div>
         </div>
       </div>
